@@ -10,6 +10,7 @@ Hệ thống quản lý VPS sử dụng DirectAdmin + Apache để quản lý nh
 - ✅ Hệ thống cache - lưu danh sách sites vào file, không cần quét lại mỗi lần
 - ✅ Tự động rescan sau 24 giờ hoặc rescan thủ công
 - ✅ Module chặn XML-RPC (xmlrpc.php)
+- ✅ Module chặn WP-Login (chỉ cho phép IP Việt Nam)
 
 ## Yêu cầu
 
@@ -87,6 +88,10 @@ File cache được lưu tại:
 
 Module này cho phép chặn hoặc bỏ chặn truy cập file `xmlrpc.php` cho tất cả WordPress sites.
 
+## Module: WP-Login Block
+
+Module này cho phép chặn truy cập `wp-login.php` cho tất cả IP ngoài Việt Nam, chỉ cho phép IP Việt Nam truy cập. Giúp chống brute force attack hiệu quả.
+
 ### Cách hoạt động
 
 - **Enable**: Thêm rules vào file `.htaccess` của mỗi WordPress site để chặn truy cập xmlrpc.php
@@ -142,6 +147,7 @@ wp-manager/
 ├── install.sh             # Script cài đặt
 ├── modules/               # Thư mục chứa các module
 │   ├── xmlrpc-block.sh    # Module chặn XML-RPC
+│   ├── wp-login-block.sh  # Module chặn WP-Login (VN IP only)
 │   └── example-module.sh  # Template để tạo module mới
 ├── config/                # Thư mục lưu trạng thái (tự động tạo)
 │   └── *.status          # Files trạng thái của từng module

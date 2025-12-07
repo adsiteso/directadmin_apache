@@ -1,35 +1,24 @@
 #!/bin/bash
 
 ###############################################################################
-# XML-RPC Block Module
-# Block/unblock xmlrpc.php access for WordPress sites
+# WP-Login Block Module
+# Block wp-login.php access except for Vietnam IP addresses
 ###############################################################################
 
 # Module name
-MODULE_NAME="xmlrpc-block"
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-# Get script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DA_USERDATA="/usr/local/directadmin/data/users"
+MODULE_NAME="wp-login-block"
 
 ###############################################################################
 # Module Functions
 ###############################################################################
 
-xmlrpc-block_description() {
-    echo "Block XML-RPC Access (xmlrpc.php)"
+wp-login-block_description() {
+    echo "Block WP-Login (Only Vietnam IP)"
 }
 
-# Enable XML-RPC blocking
-xmlrpc-block_enable() {
-    print_info "Enabling XML-RPC blocking for all WordPress sites..."
+# Enable WP-Login blocking (only Vietnam IP allowed)
+wp-login-block_enable() {
+    print_info "Enabling WP-Login blocking (only Vietnam IP allowed) for all WordPress sites..."
     
     # Check if get_wordpress_sites function exists
     if ! type get_wordpress_sites &>/dev/null; then
@@ -77,29 +66,74 @@ xmlrpc-block_enable() {
         fi
         
         # Check if rule already exists
-        if grep -q "# BEGIN XML-RPC Block - WordPress Manager" "$htaccess_file" 2>/dev/null; then
-            print_warning "XML-RPC block already exists for $domain"
+        if grep -q "# BEGIN WP-Login Block - WordPress Manager" "$htaccess_file" 2>/dev/null; then
+            print_warning "WP-Login block already exists for $domain"
             continue
         fi
         
         # Add blocking rules
         {
             echo ""
-            echo "# BEGIN XML-RPC Block - WordPress Manager"
+            echo "# BEGIN WP-Login Block - WordPress Manager"
             echo "# Added on $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "<Files xmlrpc.php>"
-            echo "    Order allow,deny"
-            echo "    Deny from all"
+            echo "# Block wp-login.php, only allow Vietnam IP addresses"
+            echo "<Files \"wp-login.php\">"
+            echo "    # Custom error message for blocked access"
+            echo "    ErrorDocument 403 \"<html><head><title>Access Denied</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:50px;background:#f5f5f5;}h1{color:#d32f2f;margin-bottom:20px;}p{color:#666;font-size:16px;line-height:1.6;max-width:600px;margin:0 auto;}hr{margin:30px auto;width:100px;border:none;border-top:2px solid #ddd;}</style></head><body><h1>403 - Access Denied</h1><hr><p><strong>WordPress Login Access Restricted</strong></p><p>Access to wp-login.php is restricted to Vietnam IP addresses only for security purposes.</p><p>If you believe this is an error, please contact the website administrator.</p></body></html>\""
+            echo "    <RequireAny>"
+            echo "        Require ip 14.0.0.0/8"
+            echo "        Require ip 27.0.0.0/8"
+            echo "        Require ip 42.0.0.0/8"
+            echo "        Require ip 49.0.0.0/8"
+            echo "        Require ip 58.0.0.0/8"
+            echo "        Require ip 59.0.0.0/8"
+            echo "        Require ip 60.0.0.0/8"
+            echo "        Require ip 61.0.0.0/8"
+            echo "        Require ip 101.0.0.0/8"
+            echo "        Require ip 103.0.0.0/8"
+            echo "        Require ip 106.0.0.0/8"
+            echo "        Require ip 110.0.0.0/8"
+            echo "        Require ip 111.0.0.0/8"
+            echo "        Require ip 112.0.0.0/8"
+            echo "        Require ip 113.0.0.0/8"
+            echo "        Require ip 114.0.0.0/8"
+            echo "        Require ip 115.0.0.0/8"
+            echo "        Require ip 116.0.0.0/8"
+            echo "        Require ip 117.0.0.0/8"
+            echo "        Require ip 118.0.0.0/8"
+            echo "        Require ip 119.0.0.0/8"
+            echo "        Require ip 120.0.0.0/8"
+            echo "        Require ip 121.0.0.0/8"
+            echo "        Require ip 122.0.0.0/8"
+            echo "        Require ip 123.0.0.0/8"
+            echo "        Require ip 124.0.0.0/8"
+            echo "        Require ip 125.0.0.0/8"
+            echo "        Require ip 126.0.0.0/8"
+            echo "        Require ip 171.224.0.0/13"
+            echo "        Require ip 175.224.0.0/13"
+            echo "        Require ip 180.0.0.0/8"
+            echo "        Require ip 183.0.0.0/8"
+            echo "        Require ip 202.0.0.0/7"
+            echo "        Require ip 203.0.0.0/8"
+            echo "        Require ip 210.0.0.0/7"
+            echo "        Require ip 211.0.0.0/8"
+            echo "        Require ip 218.0.0.0/7"
+            echo "        Require ip 219.0.0.0/8"
+            echo "        Require ip 220.0.0.0/7"
+            echo "        Require ip 221.0.0.0/8"
+            echo "        Require ip 222.0.0.0/7"
+            echo "        Require ip 223.0.0.0/8"
+            echo "    </RequireAny>"
             echo "</Files>"
             echo ""
-            echo "# END XML-RPC Block - WordPress Manager"
+            echo "# END WP-Login Block - WordPress Manager"
         } >> "$htaccess_file"
         
         if [ $? -eq 0 ]; then
-            print_success "Blocked XML-RPC for $domain"
+            print_success "Blocked WP-Login (VN IP only) for $domain"
             ((count++))
         else
-            print_error "Failed to block XML-RPC for $domain"
+            print_error "Failed to block WP-Login for $domain"
             ((failed++))
         fi
         
@@ -115,9 +149,9 @@ xmlrpc-block_enable() {
     fi
 }
 
-# Disable XML-RPC blocking
-xmlrpc-block_disable() {
-    print_info "Disabling XML-RPC blocking for all WordPress sites..."
+# Disable WP-Login blocking
+wp-login-block_disable() {
+    print_info "Disabling WP-Login blocking for all WordPress sites..."
     
     # Check if get_wordpress_sites function exists
     if ! type get_wordpress_sites &>/dev/null; then
@@ -148,61 +182,40 @@ xmlrpc-block_disable() {
     
     print_info "Found ${#sites[@]} WordPress site(s) to process"
     
-    local skipped_no_htaccess=0
-    local skipped_no_rule=0
-    local skipped_invalid=0
-    
     # Process each site
     for site in "${sites[@]}"; do
         IFS=: read -r domain docroot <<< "$site"
         
         if [ -z "$domain" ] || [ -z "$docroot" ]; then
-            ((skipped_invalid++))
             continue
         fi
         
         local htaccess_file="$docroot/.htaccess"
         
         if [ ! -f "$htaccess_file" ]; then
-            ((skipped_no_htaccess++))
             continue
         fi
         
         # Check if rule exists
-        if ! grep -q "# BEGIN XML-RPC Block - WordPress Manager" "$htaccess_file" 2>/dev/null; then
-            ((skipped_no_rule++))
+        if ! grep -q "# BEGIN WP-Login Block - WordPress Manager" "$htaccess_file" 2>/dev/null; then
             continue
         fi
         
         # Remove blocking rules using sed
-        # Remove from "# BEGIN XML-RPC Block" to "# END XML-RPC Block" including blank lines
-        sed -i '/^# BEGIN XML-RPC Block - WordPress Manager/,/^# END XML-RPC Block - WordPress Manager$/d' "$htaccess_file" 2>/dev/null
+        # Remove from "# BEGIN WP-Login Block" to "# END WP-Login Block" including blank lines
+        sed -i '/^# BEGIN WP-Login Block - WordPress Manager/,/^# END WP-Login Block - WordPress Manager$/d' "$htaccess_file" 2>/dev/null
         # Remove multiple consecutive blank lines
         sed -i '/^$/N;/^\n$/d' "$htaccess_file" 2>/dev/null
         
         if [ $? -eq 0 ]; then
-            print_success "Unblocked XML-RPC for $domain"
+            print_success "Unblocked WP-Login for $domain"
             ((count++))
         else
-            print_error "Failed to unblock XML-RPC for $domain"
+            print_error "Failed to unblock WP-Login for $domain"
             ((failed++))
         fi
         
     done
-    
-    # Show skipped reasons if any
-    if [ $skipped_no_htaccess -gt 0 ] || [ $skipped_no_rule -gt 0 ] || [ $skipped_invalid -gt 0 ]; then
-        echo ""
-        if [ $skipped_no_rule -gt 0 ]; then
-            print_info "Skipped $skipped_no_rule site(s) - XML-RPC block rule not found (may not be enabled)"
-        fi
-        if [ $skipped_no_htaccess -gt 0 ]; then
-            print_info "Skipped $skipped_no_htaccess site(s) - .htaccess file not found"
-        fi
-        if [ $skipped_invalid -gt 0 ]; then
-            print_info "Skipped $skipped_invalid site(s) - invalid domain/docroot"
-        fi
-    fi
     
     echo ""
     print_info "Summary: $count sites updated, $failed failed"
@@ -214,9 +227,9 @@ xmlrpc-block_disable() {
     fi
 }
 
-# Check status of XML-RPC blocking
-xmlrpc-block_status() {
-    print_info "Checking XML-RPC block status for all WordPress sites..."
+# Check status of WP-Login blocking
+wp-login-block_status() {
+    print_info "Checking WP-Login block status for all WordPress sites..."
     echo ""
     
     # Check if get_wordpress_sites function exists
@@ -266,8 +279,8 @@ xmlrpc-block_status() {
         local htaccess_file="$docroot/.htaccess"
         ((total++))
         
-        if [ -f "$htaccess_file" ] && grep -q "# BEGIN XML-RPC Block - WordPress Manager" "$htaccess_file" 2>/dev/null; then
-            echo -e "  ${GREEN}✓${NC} $domain - Blocked"
+        if [ -f "$htaccess_file" ] && grep -q "# BEGIN WP-Login Block - WordPress Manager" "$htaccess_file" 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} $domain - Blocked (VN IP only)"
             ((blocked++))
         else
             echo -e "  ${RED}✗${NC} $domain - Not blocked"
@@ -279,7 +292,7 @@ xmlrpc-block_status() {
     echo ""
     echo "Summary:"
     echo "  Total WordPress sites: $total"
-    echo -e "  ${GREEN}Blocked: $blocked${NC}"
+    echo -e "  ${GREEN}Blocked (VN IP only): $blocked${NC}"
     echo -e "  ${RED}Not blocked: $unblocked${NC}"
 }
 
