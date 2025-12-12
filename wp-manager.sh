@@ -54,7 +54,7 @@ print_error() {
 
 # Check if running as root
 check_root() {
-    if [ "$EUID" -ne 0 ]; then 
+    if [ "$EUID" -ne 0 ]; then
         print_error "Please run as root"
         exit 1
     fi
@@ -63,12 +63,12 @@ check_root() {
 # Scan and cache WordPress sites
 scan_wordpress_sites() {
     local force_rescan="${1:-false}"
-    
+
     # Check if cache exists and is valid (not older than 24 hours by default)
     if [ "$force_rescan" != "true" ] && [ -f "$WP_SITES_CACHE" ] && [ -f "$WP_SITES_CACHE_TIMESTAMP" ]; then
         local cache_age=$(($(date +%s) - $(cat "$WP_SITES_CACHE_TIMESTAMP")))
         local max_age=86400  # 24 hours in seconds
-        
+
         if [ $cache_age -lt $max_age ]; then
             print_info "Using cached WordPress sites list (age: $(($cache_age / 3600))h)"
             return 0
@@ -76,33 +76,33 @@ scan_wordpress_sites() {
             print_info "Cache expired, rescanning..."
         fi
     fi
-    
+
     print_info "Scanning for WordPress sites..."
-    
+
     local sites=()
     local total_domains=0
     local wp_sites=0
-    
+
     # Scan from /home directory (DirectAdmin structure)
     if [ -d "$HOME_DIR" ]; then
         print_info "Scanning $HOME_DIR directory..."
-        
+
         # Find all user directories in /home
         for user_dir in "$HOME_DIR"/*; do
             if [ -d "$user_dir" ]; then
                 local user_name=$(basename "$user_dir")
                 local domains_dir="$user_dir/domains"
-                
+
                 if [ -d "$domains_dir" ]; then
                     # Find all domain directories
                     for domain_dir in "$domains_dir"/*; do
                         if [ -d "$domain_dir" ]; then
                             local domain=$(basename "$domain_dir")
                             local docroot="$domain_dir/public_html"
-                            
+
                             if [ -d "$docroot" ]; then
                                 ((total_domains++))
-                                
+
                                 # Check if WordPress exists (look for wp-config.php)
                                 if [ -f "$docroot/wp-config.php" ]; then
                                     sites+=("$domain:$docroot")
@@ -117,7 +117,7 @@ scan_wordpress_sites() {
     else
         print_warning "Home directory not found: $HOME_DIR, trying DirectAdmin userdata..."
     fi
-    
+
     # Also try DirectAdmin userdata if exists (for compatibility or fallback)
     if [ -d "$DA_USERDATA" ]; then
         if [ ${#sites[@]} -eq 0 ]; then
@@ -125,7 +125,7 @@ scan_wordpress_sites() {
         else
             print_info "Also scanning DirectAdmin userdata for additional sites..."
         fi
-        
+
         for user_dir in "$DA_USERDATA"/*; do
             if [ -d "$user_dir" ]; then
                 local domains_file="$user_dir/domains.list"
@@ -140,7 +140,7 @@ scan_wordpress_sites() {
                                     break
                                 fi
                             done
-                            
+
                             if [ "$found" = false ]; then
                                 ((total_domains++))
                                 # Check if WordPress exists (look for wp-config.php)
@@ -156,13 +156,13 @@ scan_wordpress_sites() {
             fi
         done
     fi
-    
+
     # If no sites found in both locations, return error
     if [ ${#sites[@]} -eq 0 ] && [ ! -d "$HOME_DIR" ] && [ ! -d "$DA_USERDATA" ]; then
         print_error "Neither $HOME_DIR nor $DA_USERDATA found. Cannot scan for WordPress sites."
         return 1
     fi
-    
+
     # Save to cache file
     if [ ${#sites[@]} -gt 0 ]; then
         printf '%s\n' "${sites[@]}" > "$WP_SITES_CACHE"
@@ -175,7 +175,7 @@ scan_wordpress_sites() {
         echo $(date +%s) > "$WP_SITES_CACHE_TIMESTAMP"
         print_warning "No WordPress sites found"
     fi
-    
+
     return 0
 }
 
@@ -184,7 +184,7 @@ load_wordpress_sites_cache() {
     if [ ! -f "$WP_SITES_CACHE" ]; then
         return 1
     fi
-    
+
     cat "$WP_SITES_CACHE"
     return 0
 }
@@ -192,7 +192,7 @@ load_wordpress_sites_cache() {
 # Get all WordPress sites (from cache or scan)
 get_wordpress_sites() {
     local force_rescan="${1:-false}"
-    
+
     # Try to load from cache first
     if [ "$force_rescan" != "true" ] && [ -f "$WP_SITES_CACHE" ]; then
         local cached_sites=$(load_wordpress_sites_cache)
@@ -201,7 +201,7 @@ get_wordpress_sites() {
             return 0
         fi
     fi
-    
+
     # If cache doesn't exist or force rescan, scan and return
     scan_wordpress_sites "$force_rescan" > /dev/null 2>&1
     load_wordpress_sites_cache
@@ -222,12 +222,12 @@ count_wordpress_sites() {
 load_module() {
     local module_name="$1"
     local module_file="$MODULES_DIR/${module_name}.sh"
-    
+
     if [ ! -f "$module_file" ]; then
         print_error "Module not found: $module_name"
         return 1
     fi
-    
+
     source "$module_file"
 }
 
@@ -235,7 +235,7 @@ load_module() {
 get_module_status() {
     local module_name="$1"
     local status_file="$CONFIG_DIR/${module_name}.status"
-    
+
     if [ -f "$status_file" ]; then
         cat "$status_file"
     else
@@ -248,7 +248,7 @@ set_module_status() {
     local module_name="$1"
     local status="$2"
     local status_file="$CONFIG_DIR/${module_name}.status"
-    
+
     echo "$status" > "$status_file"
 }
 
@@ -256,11 +256,11 @@ set_module_status() {
 list_modules() {
     local modules=()
     local exclude_modules=("cron-manager" "example-module")
-    
+
     for module_file in "$MODULES_DIR"/*.sh; do
         if [ -f "$module_file" ]; then
             local module_name=$(basename "$module_file" .sh)
-            
+
             # Skip excluded modules
             local skip=false
             for exclude in "${exclude_modules[@]}"; do
@@ -269,14 +269,41 @@ list_modules() {
                     break
                 fi
             done
-            
+
             if [ "$skip" = false ]; then
                 modules+=("$module_name")
             fi
         fi
     done
-    
+
     printf '%s\n' "${modules[@]}"
+}
+
+# Get module description (loads module temporarily if needed)
+get_module_description() {
+    local module_name="$1"
+    local description=""
+
+    # Check if description function exists (module already loaded)
+    if type "${module_name}_description" &>/dev/null; then
+        description=$("${module_name}_description")
+    else
+        # Load module temporarily to get description
+        local module_file="$MODULES_DIR/${module_name}.sh"
+        if [ -f "$module_file" ]; then
+            # Source in subshell to avoid polluting current environment
+            description=$(bash -c "source '$module_file' 2>/dev/null && ${module_name}_description 2>/dev/null || echo '$module_name'")
+        else
+            description="$module_name"
+        fi
+    fi
+
+    # Fallback to module name if description is empty
+    if [ -z "$description" ]; then
+        description="$module_name"
+    fi
+
+    echo "$description"
 }
 
 ###############################################################################
@@ -289,22 +316,22 @@ show_main_menu() {
     echo "  WordPress Manager for DirectAdmin"
     echo "=========================================="
     echo ""
-    
+
     local wp_count=$(count_wordpress_sites)
     print_info "Found $wp_count WordPress sites"
     echo ""
-    
+
     echo "Available Modules:"
     echo "-------------------"
-    
+
     local modules=($(list_modules))
     local index=1
-    
+
     for module in "${modules[@]}"; do
         local status=$(get_module_status "$module")
         local status_color=""
         local status_text=""
-        
+
         if [ "$status" == "enabled" ]; then
             status_color="$GREEN"
             status_text="[ENABLED]"
@@ -312,19 +339,14 @@ show_main_menu() {
             status_color="$RED"
             status_text="[DISABLED]"
         fi
-        
-        # Get module description if available
-        local description=""
-        if type "${module}_description" &>/dev/null; then
-            description=$("${module}_description")
-        else
-            description="$module"
-        fi
-        
+
+        # Get module description
+        local description=$(get_module_description "$module")
+
         echo -e "  $index) $description ${status_color}${status_text}${NC}"
         ((index++))
     done
-    
+
     echo ""
     echo "  c) Manage Cron Jobs"
     echo "  r) Rescan WordPress sites"
@@ -336,13 +358,13 @@ show_main_menu() {
 handle_module_menu() {
     local module_name="$1"
     local status=$(get_module_status "$module_name")
-    
+
     clear
     echo "=========================================="
     echo "  Module: $module_name"
     echo "=========================================="
     echo ""
-    
+
     if [ "$status" == "enabled" ]; then
         echo -e "Current Status: ${GREEN}ENABLED${NC}"
     else
@@ -356,9 +378,9 @@ handle_module_menu() {
     echo "  0) Back to main menu"
     echo ""
     echo -n "Select option: "
-    
+
     read choice
-    
+
     case $choice in
         1)
             print_info "Enabling $module_name..."
@@ -402,20 +424,20 @@ handle_module_menu() {
 main_loop() {
     # Initial scan on startup
     scan_wordpress_sites false
-    
+
     while true; do
         show_main_menu
         read choice
-        
+
         if [ -z "$choice" ]; then
             continue
         fi
-        
+
         if [ "$choice" == "0" ]; then
             print_info "Goodbye!"
             exit 0
         fi
-        
+
         # Handle cron jobs option
         if [ "$choice" == "c" ] || [ "$choice" == "C" ]; then
             # Load cron-manager module
@@ -428,7 +450,7 @@ main_loop() {
             fi
             continue
         fi
-        
+
         # Handle rescan option
         if [ "$choice" == "r" ] || [ "$choice" == "R" ]; then
             print_info "Rescanning WordPress sites..."
@@ -437,10 +459,10 @@ main_loop() {
             read -p "Press Enter to continue..."
             continue
         fi
-        
+
         local modules=($(list_modules))
         local module_index=$((choice - 1))
-        
+
         if [ "$module_index" -ge 0 ] && [ "$module_index" -lt "${#modules[@]}" ]; then
             local selected_module="${modules[$module_index]}"
             load_module "$selected_module"
@@ -458,13 +480,13 @@ main_loop() {
 
 main() {
     check_root
-    
+
     # Check if DirectAdmin is installed
     if [ ! -d "$DA_USERDATA" ]; then
         print_error "DirectAdmin not found. Please check your installation."
         exit 1
     fi
-    
+
     # Start main loop
     main_loop
 }
