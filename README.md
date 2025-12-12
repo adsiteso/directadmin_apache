@@ -10,7 +10,9 @@ Hệ thống quản lý VPS sử dụng DirectAdmin + Apache để quản lý nh
 - ✅ Hệ thống cache - lưu danh sách sites vào file, không cần quét lại mỗi lần
 - ✅ Tự động rescan sau 24 giờ hoặc rescan thủ công
 - ✅ Module chặn XML-RPC (xmlrpc.php)
-- ✅ Module chặn WP-Login (chỉ cho phép IP Việt Nam)
+- ✅ Module bảo vệ WP-Login (password protection)
+- ✅ Module quản lý WP-Cron (disable auto cron, setup system cron)
+- ✅ Module quản lý Cron Jobs (xem, chỉnh sửa, backup/restore)
 
 ## Yêu cầu
 
@@ -30,9 +32,9 @@ cd wp-manager
 ```
 
 2. Copy các file vào thư mục:
+
    - `wp-manager.sh` - Script chính
-   - `modules/xmlrpc-block.sh` - Module chặn XML-RPC
-   - `modules/example-module.sh` - Template để tạo module mới
+   - `modules/` - Tất cả các module
    - `install.sh` - Script cài đặt (tùy chọn)
 
 3. Cấp quyền thực thi:
@@ -66,21 +68,24 @@ sudo bash wp-manager.sh
 ## Menu chính
 
 Script sẽ hiển thị menu với:
+
 - Danh sách các module có sẵn
 - Trạng thái của từng module (ENABLED/DISABLED)
 - Số lượng WordPress sites được phát hiện
-- Thông tin cache (thời gian cache)
+- Option "c" để quản lý Cron Jobs
 - Option "r" để rescan WordPress sites
 
 ### Hệ thống Cache
 
 Script tự động cache danh sách WordPress sites vào file `cache/wordpress_sites.txt`:
+
 - **Lần đầu chạy**: Tự động quét và lưu vào cache
 - **Các lần sau**: Đọc từ cache (nhanh hơn)
 - **Cache hết hạn**: Tự động quét lại sau 24 giờ
 - **Rescan thủ công**: Chọn option "r" trong menu để quét lại ngay
 
 File cache được lưu tại:
+
 - `cache/wordpress_sites.txt` - Danh sách sites (format: domain:docroot)
 - `cache/wordpress_sites.timestamp` - Thời gian cache
 
@@ -88,9 +93,9 @@ File cache được lưu tại:
 
 Module này cho phép chặn hoặc bỏ chặn truy cập file `xmlrpc.php` cho tất cả WordPress sites.
 
-## Module: WP-Login Block
+## Module: XML-RPC Block
 
-Module này cho phép chặn truy cập `wp-login.php` cho tất cả IP ngoài Việt Nam, chỉ cho phép IP Việt Nam truy cập. Giúp chống brute force attack hiệu quả.
+Module này cho phép chặn hoặc bỏ chặn truy cập file `xmlrpc.php` cho tất cả WordPress sites.
 
 ### Cách hoạt động
 
@@ -101,13 +106,44 @@ Module này cho phép chặn truy cập `wp-login.php` cho tất cả IP ngoài 
 ### Rules được thêm vào .htaccess
 
 ```apache
-# XML-RPC Block - WordPress Manager
-# Added on YYYY-MM-DD HH:MM:SS
+# BEGIN XML-RPC Block - WordPress Manager - YYYY-MM-DD HH:MM:SS
 <Files xmlrpc.php>
     Order allow,deny
     Deny from all
 </Files>
+# END XML-RPC Block - WordPress Manager
 ```
+
+## Module: WP-Login Protect
+
+Module này bảo vệ `wp-login.php` bằng HTTP Basic Authentication (password protection). Giúp chống brute force attack hiệu quả.
+
+### Cách hoạt động
+
+- **Enable**: Thêm password protection vào `wp-login.php`, tạo file `.htpasswd` cho mỗi site
+- **Disable**: Xóa các rules đã thêm (giữ lại file `.htpasswd`)
+- **Status**: Hiển thị trạng thái bảo vệ của từng site
+
+## Module: WP-Cron Disable
+
+Module này tắt WP-Cron tự động và thiết lập system cron job để chạy `wp-cron.php` mỗi 15 phút. Giúp tối ưu hiệu suất server.
+
+### Cách hoạt động
+
+- **Enable**: Thêm `DISABLE_WP_CRON` vào `wp-config.php` và tạo system cron job
+- **Disable**: Xóa `DISABLE_WP_CRON` và xóa system cron job
+- **Status**: Hiển thị trạng thái của từng site và system cron jobs
+- **Tự động cleanup**: Tự động xóa orphan cron jobs (cron job không còn config tương ứng)
+
+## Module: Cron Manager
+
+Module quản lý system cron jobs với các chức năng:
+
+- Xem danh sách cron jobs đang chạy
+- Chỉnh sửa cron jobs (dùng editor)
+- Xóa cron job theo số dòng
+- Thêm cron job mới
+- Backup và restore crontab
 
 ## Thêm module mới
 
@@ -147,7 +183,9 @@ wp-manager/
 ├── install.sh             # Script cài đặt
 ├── modules/               # Thư mục chứa các module
 │   ├── xmlrpc-block.sh    # Module chặn XML-RPC
-│   ├── wp-login-block.sh  # Module chặn WP-Login (VN IP only)
+│   ├── wp-login-protect.sh # Module bảo vệ WP-Login (password protection)
+│   ├── wp-cron-disable.sh  # Module quản lý WP-Cron
+│   ├── cron-manager.sh     # Module quản lý system cron jobs
 │   └── example-module.sh  # Template để tạo module mới
 ├── config/                # Thư mục lưu trạng thái (tự động tạo)
 │   └── *.status          # Files trạng thái của từng module
@@ -185,6 +223,7 @@ wp-manager/
 ## Phát triển
 
 Để thêm chức năng mới, chỉ cần:
+
 1. Tạo file module mới trong `modules/`
 2. Implement các hàm required
 3. Script sẽ tự động load và hiển thị trong menu
@@ -192,4 +231,3 @@ wp-manager/
 ## License
 
 Free to use and modify.
-

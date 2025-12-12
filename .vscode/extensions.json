@@ -1,6 +1,5 @@
 {
     "recommendations": [
-        "mkhl.shfmt",
         "timonwong.shellcheck"
     ]
 }
