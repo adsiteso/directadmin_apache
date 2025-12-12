@@ -14,17 +14,6 @@
     // Shell script specific settings
     "[shellscript]": {
         "files.eol": "\n",
-        "editor.defaultFormatter": "mkhl.shfmt",
-        "editor.formatOnSave": true,
-        "editor.tabSize": 4,
-        "editor.insertSpaces": true
-    },
-
-    // Bash script specific settings
-    "[bash]": {
-        "files.eol": "\n",
-        "editor.defaultFormatter": "mkhl.shfmt",
-        "editor.formatOnSave": true,
         "editor.tabSize": 4,
         "editor.insertSpaces": true
     },
