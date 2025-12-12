@@ -267,10 +267,10 @@ xmlrpc-block_status() {
         ((total++))
         
         if [ -f "$htaccess_file" ] && grep -q "# BEGIN XML-RPC Block - WordPress Manager" "$htaccess_file" 2>/dev/null; then
-            echo -e "  ${GREEN}✓${NC} $domain - Blocked"
+            echo -e "  ${GREEN}âœ“${NC} $domain - Blocked"
             ((blocked++))
         else
-            echo -e "  ${RED}✗${NC} $domain - Not blocked"
+            echo -e "  ${RED}âœ—${NC} $domain - Not blocked"
             ((unblocked++))
         fi
         

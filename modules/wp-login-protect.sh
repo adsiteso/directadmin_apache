@@ -316,14 +316,14 @@ wp-login-protect_status() {
         if [ -f "$htaccess_file" ] && (grep -q "# BEGIN WP-Login Protect - WordPress Manager" "$htaccess_file" 2>/dev/null || \
             grep -q "# BEGIN WP-Login Block - WordPress Manager" "$htaccess_file" 2>/dev/null); then
             if [ -f "$htpasswd_file" ]; then
-                echo -e "  ${GREEN}✓${NC} $domain - Password Protected"
+                echo -e "  ${GREEN}âœ“${NC} $domain - Password Protected"
                 ((protected++))
             else
-                echo -e "  ${YELLOW}⚠${NC} $domain - Rule exists but .htpasswd missing"
+                echo -e "  ${YELLOW}âš ${NC} $domain - Rule exists but .htpasswd missing"
                 ((unprotected++))
             fi
         else
-            echo -e "  ${RED}✗${NC} $domain - Not protected"
+            echo -e "  ${RED}âœ—${NC} $domain - Not protected"
             ((unprotected++))
         fi
         

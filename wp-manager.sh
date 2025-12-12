@@ -29,7 +29,6 @@ WP_SITES_CACHE_TIMESTAMP="$CACHE_DIR/wordpress_sites.timestamp"
 
 # DirectAdmin paths
 DA_USERDATA="/usr/local/directadmin/data/users"
-DA_HTTPD_CONF="/etc/httpd/conf/extra/httpd-includes.conf"
 HOME_DIR="/home"
 
 ###############################################################################
@@ -256,10 +255,24 @@ set_module_status() {
 # List available modules
 list_modules() {
     local modules=()
+    local exclude_modules=("cron-manager" "example-module")
+    
     for module_file in "$MODULES_DIR"/*.sh; do
         if [ -f "$module_file" ]; then
             local module_name=$(basename "$module_file" .sh)
-            modules+=("$module_name")
+            
+            # Skip excluded modules
+            local skip=false
+            for exclude in "${exclude_modules[@]}"; do
+                if [ "$module_name" == "$exclude" ]; then
+                    skip=true
+                    break
+                fi
+            done
+            
+            if [ "$skip" = false ]; then
+                modules+=("$module_name")
+            fi
         fi
     done
     
@@ -277,21 +290,8 @@ show_main_menu() {
     echo "=========================================="
     echo ""
     
-    # Check cache status
-    local cache_info=""
-    if [ -f "$WP_SITES_CACHE_TIMESTAMP" ]; then
-        local cache_age=$(($(date +%s) - $(cat "$WP_SITES_CACHE_TIMESTAMP")))
-        local cache_hours=$(($cache_age / 3600))
-        local cache_mins=$((($cache_age % 3600) / 60))
-        if [ $cache_hours -eq 0 ]; then
-            cache_info=" (cache: ${cache_mins}m ago)"
-        else
-            cache_info=" (cache: ${cache_hours}h ${cache_mins}m ago)"
-        fi
-    fi
-    
     local wp_count=$(count_wordpress_sites)
-    print_info "Found $wp_count WordPress sites$cache_info"
+    print_info "Found $wp_count WordPress sites"
     echo ""
     
     echo "Available Modules:"
@@ -326,6 +326,7 @@ show_main_menu() {
     done
     
     echo ""
+    echo "  c) Manage Cron Jobs"
     echo "  r) Rescan WordPress sites"
     echo "  0) Exit"
     echo ""
@@ -397,6 +398,7 @@ handle_module_menu() {
     esac
 }
 
+
 main_loop() {
     # Initial scan on startup
     scan_wordpress_sites false
@@ -412,6 +414,19 @@ main_loop() {
         if [ "$choice" == "0" ]; then
             print_info "Goodbye!"
             exit 0
+        fi
+        
+        # Handle cron jobs option
+        if [ "$choice" == "c" ] || [ "$choice" == "C" ]; then
+            # Load cron-manager module
+            load_module "cron-manager"
+            if type cron_manager_menu &>/dev/null; then
+                cron_manager_menu
+            else
+                print_error "Cron Manager module not found"
+                sleep 2
+            fi
+            continue
         fi
         
         # Handle rescan option

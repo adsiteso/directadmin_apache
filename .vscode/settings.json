@@ -1,0 +1,45 @@
+{
+    // Line endings - Force LF (Unix) for all files
+    "files.eol": "\n",
+
+    // Insert final newline at end of file
+    "files.insertFinalNewline": true,
+
+    // Remove trailing whitespace
+    "files.trimTrailingWhitespace": true,
+
+    // Auto format on save
+    "editor.formatOnSave": true,
+
+    // Shell script specific settings
+    "[shellscript]": {
+        "files.eol": "\n",
+        "editor.defaultFormatter": "mkhl.shfmt",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
+    },
+
+    // Bash script specific settings
+    "[bash]": {
+        "files.eol": "\n",
+        "editor.defaultFormatter": "mkhl.shfmt",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
+    },
+
+    // Markdown settings
+    "[markdown]": {
+        "files.eol": "\n",
+        "files.trimTrailingWhitespace": false
+    },
+
+    // Default tab size
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+
+    // Detect indentation
+    "editor.detectIndentation": false
+}
+

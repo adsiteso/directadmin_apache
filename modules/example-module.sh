@@ -117,10 +117,10 @@ example-module_status() {
         local status_file="$docroot/.example-status"
         
         if [ -f "$status_file" ]; then
-            echo -e "  ${GREEN}✓${NC} $domain - Enabled"
+            echo -e "  ${GREEN}âœ“${NC} $domain - Enabled"
             ((enabled++))
         else
-            echo -e "  ${RED}✗${NC} $domain - Disabled"
+            echo -e "  ${RED}âœ—${NC} $domain - Disabled"
             ((disabled++))
         fi
         
