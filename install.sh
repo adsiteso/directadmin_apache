@@ -11,7 +11,7 @@ echo "Installing WordPress Manager..."
 echo ""
 
 # Check if running as root
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo "Error: Please run as root"
     exit 1
 fi
