@@ -306,6 +306,35 @@ get_module_description() {
     echo "$description"
 }
 
+# Check if module has status (loads module temporarily if needed)
+module_has_status() {
+    local module_name="$1"
+
+    # Check if has_status function exists (module already loaded)
+    if type "${module_name}_has_status" &>/dev/null; then
+        "${module_name}_has_status" 2>/dev/null
+        return $?  # Return the exit code directly
+    else
+        # Load module temporarily to check
+        local module_file="$MODULES_DIR/${module_name}.sh"
+        if [ -f "$module_file" ]; then
+            # Source in subshell and check
+            # If function exists and returns 0, module has status
+            # If function doesn't exist or returns non-zero, module has no status
+            bash -c "source '$module_file' 2>/dev/null && type ${module_name}_has_status &>/dev/null && ${module_name}_has_status 2>/dev/null" 2>/dev/null
+            local result=$?
+            if [ $result -eq 0 ]; then
+                return 0  # true - has status
+            else
+                return 1  # false - no status
+            fi
+        else
+            # Default: assume module has status if we can't check
+            return 0  # true
+        fi
+    fi
+}
+
 ###############################################################################
 # Menu System
 ###############################################################################
@@ -328,22 +357,29 @@ show_main_menu() {
     local index=1
 
     for module in "${modules[@]}"; do
-        local status=$(get_module_status "$module")
-        local status_color=""
+        # Check if module has status (some modules don't have enabled/disabled status)
         local status_text=""
+        if module_has_status "$module"; then
+            local status=$(get_module_status "$module")
+            local status_color=""
 
-        if [ "$status" == "enabled" ]; then
-            status_color="$GREEN"
-            status_text="[ENABLED]"
-        else
-            status_color="$RED"
-            status_text="[DISABLED]"
+            if [ "$status" == "enabled" ]; then
+                status_color="$GREEN"
+                status_text="${status_color}[ENABLED]${NC}"
+            else
+                status_color="$RED"
+                status_text="${status_color}[DISABLED]${NC}"
+            fi
         fi
 
         # Get module description
         local description=$(get_module_description "$module")
 
-        echo -e "  $index) $description ${status_color}${status_text}${NC}"
+        if [ -n "$status_text" ]; then
+            echo -e "  $index) $description $status_text"
+        else
+            echo -e "  $index) $description"
+        fi
         ((index++))
     done
 
@@ -357,7 +393,14 @@ show_main_menu() {
 
 handle_module_menu() {
     local module_name="$1"
-    local status=$(get_module_status "$module_name")
+
+    # Check if module has status
+    local has_status=true
+    if type "${module_name}_has_status" &>/dev/null; then
+        if ! "${module_name}_has_status" 2>/dev/null; then
+            has_status=false
+        fi
+    fi
 
     clear
     echo "=========================================="
@@ -365,59 +408,92 @@ handle_module_menu() {
     echo "=========================================="
     echo ""
 
-    if [ "$status" == "enabled" ]; then
-        echo -e "Current Status: ${GREEN}ENABLED${NC}"
+    if [ "$has_status" = true ]; then
+        local status=$(get_module_status "$module_name")
+        if [ "$status" == "enabled" ]; then
+            echo -e "Current Status: ${GREEN}ENABLED${NC}"
+        else
+            echo -e "Current Status: ${RED}DISABLED${NC}"
+        fi
+        echo ""
+        echo "Options:"
+        echo "  1) Enable"
+        echo "  2) Disable"
+        echo "  3) Status"
+        echo "  0) Back to main menu"
+        echo ""
+        echo -n "Select option: "
+
+        read choice
+
+        case $choice in
+            1)
+                print_info "Enabling $module_name..."
+                if "${module_name}_enable"; then
+                    set_module_status "$module_name" "enabled"
+                    print_success "$module_name enabled successfully"
+                else
+                    print_error "Failed to enable $module_name"
+                fi
+                echo ""
+                read -p "Press Enter to continue..."
+                ;;
+            2)
+                print_info "Disabling $module_name..."
+                if "${module_name}_disable"; then
+                    set_module_status "$module_name" "disabled"
+                    print_success "$module_name disabled successfully"
+                else
+                    print_error "Failed to disable $module_name"
+                fi
+                echo ""
+                read -p "Press Enter to continue..."
+                ;;
+            3)
+                print_info "Checking status of $module_name..."
+                "${module_name}_status"
+                echo ""
+                read -p "Press Enter to continue..."
+                ;;
+            0)
+                return
+                ;;
+            *)
+                print_error "Invalid option"
+                sleep 2
+                ;;
+        esac
     else
-        echo -e "Current Status: ${RED}DISABLED${NC}"
+        # Module without status - show different menu
+        echo "Options:"
+        echo "  1) Set Permissions"
+        echo "  2) Check Status"
+        echo "  0) Back to main menu"
+        echo ""
+        echo -n "Select option: "
+
+        read choice
+
+        case $choice in
+            1)
+                "${module_name}_enable"
+                echo ""
+                read -p "Press Enter to continue..."
+                ;;
+            2)
+                "${module_name}_status"
+                echo ""
+                read -p "Press Enter to continue..."
+                ;;
+            0)
+                return
+                ;;
+            *)
+                print_error "Invalid option"
+                sleep 2
+                ;;
+        esac
     fi
-    echo ""
-    echo "Options:"
-    echo "  1) Enable"
-    echo "  2) Disable"
-    echo "  3) Status"
-    echo "  0) Back to main menu"
-    echo ""
-    echo -n "Select option: "
-
-    read choice
-
-    case $choice in
-        1)
-            print_info "Enabling $module_name..."
-            if "${module_name}_enable"; then
-                set_module_status "$module_name" "enabled"
-                print_success "$module_name enabled successfully"
-            else
-                print_error "Failed to enable $module_name"
-            fi
-            echo ""
-            read -p "Press Enter to continue..."
-            ;;
-        2)
-            print_info "Disabling $module_name..."
-            if "${module_name}_disable"; then
-                set_module_status "$module_name" "disabled"
-                print_success "$module_name disabled successfully"
-            else
-                print_error "Failed to disable $module_name"
-            fi
-            echo ""
-            read -p "Press Enter to continue..."
-            ;;
-        3)
-            print_info "Checking status of $module_name..."
-            "${module_name}_status"
-            echo ""
-            read -p "Press Enter to continue..."
-            ;;
-        0)
-            return
-            ;;
-        *)
-            print_error "Invalid option"
-            sleep 2
-            ;;
-    esac
 }
 
 
