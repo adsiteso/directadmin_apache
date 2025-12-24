@@ -260,7 +260,9 @@ cleanup_orphan_cron_jobs() {
 # Setup cleanup cron job (runs daily at 2 AM)
 setup_cleanup_cron_job() {
     local cleanup_script="${CONFIG_DIR}/cleanup-orphan-cron.sh"
-    local cleanup_cron_cmd="0 2 * * * /bin/bash \"$cleanup_script\" >/dev/null 2>&1"
+    # Use absolute path without quotes for cron command
+    local cleanup_script_abs=$(readlink -f "$cleanup_script" 2>/dev/null || echo "$cleanup_script")
+    local cleanup_cron_cmd="0 2 * * * /bin/bash $cleanup_script_abs >/dev/null 2>&1"
     local cleanup_cron_comment="# WP-Cron Cleanup - WordPress Manager"
 
     # Create cleanup script
