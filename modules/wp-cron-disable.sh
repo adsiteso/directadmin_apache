@@ -53,7 +53,12 @@ TOTAL_SITES=0
 PROCESSED_SITES=0
 
 # First, count total sites to process
-while IFS=: read -r domain docroot || [ -n "$domain" ]; do
+while IFS= read -r line || [ -n "$line" ]; do
+    # Skip empty lines and commented lines (disabled sites)
+    if [[ -z "$line" ]] || [[ "$line" =~ ^[[:space:]]*# ]]; then
+        continue
+    fi
+    IFS=: read -r domain docroot <<< "$line"
     if [ -z "$domain" ] || [ -z "$docroot" ]; then
         continue
     fi
@@ -76,7 +81,12 @@ cleanup_finished_pids() {
 }
 
 # Process all sites
-while IFS=: read -r domain docroot || [ -n "$domain" ]; do
+while IFS= read -r line || [ -n "$line" ]; do
+    # Skip empty lines and commented lines (disabled sites)
+    if [[ -z "$line" ]] || [[ "$line" =~ ^[[:space:]]*# ]]; then
+        continue
+    fi
+    IFS=: read -r domain docroot <<< "$line"
     if [ -z "$domain" ] || [ -z "$docroot" ]; then
         continue
     fi
@@ -186,7 +196,7 @@ remove_wp_cron_job() {
     # Remove from tracking file
     if [ -f "$CRON_JOBS_FILE" ]; then
         local temp_file=$(mktemp)
-        grep -v "^${domain}:" "$CRON_JOBS_FILE" > "$temp_file" 2>/dev/null
+        grep -v "^${domain}:" "$CRON_JOBS_FILE" | grep -v "^#.*${domain}:" > "$temp_file" 2>/dev/null
         mv "$temp_file" "$CRON_JOBS_FILE" 2>/dev/null || true
 
         # If tracking file is empty, remove wrapper cron job
@@ -194,6 +204,76 @@ remove_wp_cron_job() {
             remove_wp_cron_wrapper
             rm -f "$CRON_JOBS_FILE" 2>/dev/null || true
         fi
+    fi
+}
+
+# Disable cron for a specific site (comment out the line)
+disable_site_cron() {
+    local domain="$1"
+
+    if [ ! -f "$CRON_JOBS_FILE" ]; then
+        return 1
+    fi
+
+    # Check if site exists and is not already disabled
+    if grep -q "^#.*${domain}:" "$CRON_JOBS_FILE" 2>/dev/null; then
+        return 1  # Already disabled
+    fi
+
+    if ! grep -q "^${domain}:" "$CRON_JOBS_FILE" 2>/dev/null; then
+        return 1  # Site not found
+    fi
+
+    # Comment out the line (handle lines that may have leading spaces)
+    local temp_file=$(mktemp)
+    sed "s|^\([[:space:]]*\)${domain}:|\1#${domain}:|" "$CRON_JOBS_FILE" > "$temp_file" 2>/dev/null
+    if [ $? -eq 0 ] && [ -s "$temp_file" ]; then
+        mv "$temp_file" "$CRON_JOBS_FILE" 2>/dev/null || return 1
+        return 0
+    else
+        rm -f "$temp_file" 2>/dev/null
+        return 1
+    fi
+}
+
+# Enable cron for a specific site (uncomment the line)
+enable_site_cron() {
+    local domain="$1"
+
+    if [ ! -f "$CRON_JOBS_FILE" ]; then
+        return 1
+    fi
+
+    # Check if site exists and is disabled
+    if ! grep -q "^#.*${domain}:" "$CRON_JOBS_FILE" 2>/dev/null; then
+        return 1  # Not disabled or not found
+    fi
+
+    # Uncomment the line (handle lines that may have leading spaces)
+    local temp_file=$(mktemp)
+    sed "s|^\([[:space:]]*\)#${domain}:|\1${domain}:|" "$CRON_JOBS_FILE" > "$temp_file" 2>/dev/null
+    if [ $? -eq 0 ] && [ -s "$temp_file" ]; then
+        mv "$temp_file" "$CRON_JOBS_FILE" 2>/dev/null || return 1
+        return 0
+    else
+        rm -f "$temp_file" 2>/dev/null
+        return 1
+    fi
+}
+
+# Check if site cron is enabled
+is_site_cron_enabled() {
+    local domain="$1"
+
+    if [ ! -f "$CRON_JOBS_FILE" ]; then
+        return 1
+    fi
+
+    # Check if line exists and is not commented (may have leading spaces)
+    if grep -q "^[[:space:]]*${domain}:" "$CRON_JOBS_FILE" 2>/dev/null && ! grep -q "^[[:space:]]*#.*${domain}:" "$CRON_JOBS_FILE" 2>/dev/null; then
+        return 0  # Enabled
+    else
+        return 1  # Disabled or not found
     fi
 }
 
@@ -583,6 +663,7 @@ wp-cron-disable_status() {
     local total=0
     local disabled=0
     local enabled=0
+    local system_cron_disabled=0
 
     # Get all WordPress sites into array
     local sites_output
@@ -611,6 +692,7 @@ wp-cron-disable_status() {
     echo ""
 
     # Process each site
+    local site_list=()
     for site in "${sites[@]}"; do
         IFS=: read -r domain docroot <<< "$site"
 
@@ -622,16 +704,20 @@ wp-cron-disable_status() {
         ((total++))
 
         local has_define=false
-        local has_cron=false
+        local cron_enabled=true
 
         if [ -f "$wp_config" ] && grep -q "BEGIN WP-Cron Disable - WordPress Manager" "$wp_config" 2>/dev/null; then
             has_define=true
         fi
 
-        # Check if site is in tracking file (new method) or has individual cron job (old method)
+        # Check if site is in tracking file
         local in_tracking=false
-        if [ -f "$CRON_JOBS_FILE" ] && grep -q "^${domain}:" "$CRON_JOBS_FILE" 2>/dev/null; then
+        if [ -f "$CRON_JOBS_FILE" ] && (grep -q "^${domain}:" "$CRON_JOBS_FILE" 2>/dev/null || grep -q "^#.*${domain}:" "$CRON_JOBS_FILE" 2>/dev/null); then
             in_tracking=true
+            # Check if cron is enabled for this site
+            if ! is_site_cron_enabled "$domain"; then
+                cron_enabled=false
+            fi
         fi
 
         # Check for wrapper cron job
@@ -640,24 +726,21 @@ wp-cron-disable_status() {
             has_wrapper_cron=true
         fi
 
-        # Check for old individual cron job (for backward compatibility)
-        local has_old_cron=false
-        if crontab -l 2>/dev/null | grep -q "wp-cron.php.*${domain}.*WordPress Manager"; then
-            has_old_cron=true
-        fi
-
         if [ "$has_define" = true ] && [ "$in_tracking" = true ] && [ "$has_wrapper_cron" = true ]; then
-            echo -e "  ${GREEN}✓${NC} $domain - WP-Cron Disabled (System Cron Active)"
-            ((disabled++))
+            if [ "$cron_enabled" = true ]; then
+                echo -e "  ${GREEN}✓${NC} $domain - WP-Cron Disabled (System Cron Active)"
+                ((disabled++))
+            else
+                echo -e "  ${YELLOW}⊘${NC} $domain - WP-Cron Disabled (System Cron Disabled for this site)"
+                ((system_cron_disabled++))
+            fi
+            site_list+=("$domain:$docroot:$cron_enabled")
         elif [ "$has_define" = true ] && [ "$in_tracking" = true ]; then
             echo -e "  ${YELLOW}⚠${NC} $domain - WP-Cron Disabled (Wrapper Cron Missing)"
             ((disabled++))
         elif [ "$has_define" = true ]; then
             echo -e "  ${YELLOW}⚠${NC} $domain - WP-Cron Disabled (Not in tracking file)"
             ((disabled++))
-        elif [ "$has_old_cron" = true ] || [ "$in_tracking" = true ]; then
-            echo -e "  ${YELLOW}⚠${NC} $domain - Orphan Cron Job (WP-Cron Not Disabled - will be cleaned up)"
-            ((enabled++))
         else
             echo -e "  ${RED}✗${NC} $domain - WP-Cron Enabled (Auto)"
             ((enabled++))
@@ -668,8 +751,71 @@ wp-cron-disable_status() {
     echo ""
     echo "Summary:"
     echo "  Total WordPress sites: $total"
-    echo -e "  ${GREEN}WP-Cron Disabled: $disabled${NC}"
-    echo -e "  ${RED}WP-Cron Enabled: $enabled${NC}"
+    echo -e "  ${GREEN}WP-Cron Disabled (System Cron Active): $disabled${NC}"
+    if [ $system_cron_disabled -gt 0 ]; then
+        echo -e "  ${YELLOW}System Cron Disabled for site(s): $system_cron_disabled${NC}"
+    fi
+    echo -e "  ${RED}WP-Cron Enabled (Auto): $enabled${NC}"
+    echo ""
+
+    # Show menu to manage individual sites if there are sites with system cron
+    if [ ${#site_list[@]} -gt 0 ]; then
+        echo "Manage individual site cron jobs:"
+        echo "-----------------------------------"
+        local idx=1
+        local site_domains=()
+        local site_docroots=()
+        local site_cron_status=()
+
+        for site_info in "${site_list[@]}"; do
+            IFS=: read -r sdomain sdocroot scron_enabled <<< "$site_info"
+            site_domains+=("$sdomain")
+            site_docroots+=("$sdocroot")
+            site_cron_status+=("$scron_enabled")
+
+            if [ "$scron_enabled" = "true" ]; then
+                echo -e "  ${GREEN}$idx)${NC} $sdomain - System Cron Enabled"
+            else
+                echo -e "  ${YELLOW}$idx)${NC} $sdomain - System Cron Disabled"
+            fi
+            ((idx++))
+        done
+        echo "  0) Back"
+        echo ""
+        echo -n "Select site to toggle cron (0 to skip): "
+        read site_choice
+
+        if [[ "$site_choice" =~ ^[0-9]+$ ]] && [ "$site_choice" -ge 1 ] && [ "$site_choice" -le ${#site_list[@]} ]; then
+            local selected_idx=$((site_choice - 1))
+            local selected_domain="${site_domains[$selected_idx]}"
+            local current_status="${site_cron_status[$selected_idx]}"
+
+            if [ "$current_status" = "true" ]; then
+                echo ""
+                echo -n "Disable system cron for $selected_domain? (y/N): "
+                read confirm
+                if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+                    if disable_site_cron "$selected_domain"; then
+                        print_success "System cron disabled for $selected_domain"
+                    else
+                        print_error "Failed to disable system cron for $selected_domain"
+                    fi
+                fi
+            else
+                echo ""
+                echo -n "Enable system cron for $selected_domain? (y/N): "
+                read confirm
+                if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+                    if enable_site_cron "$selected_domain"; then
+                        print_success "System cron enabled for $selected_domain"
+                    else
+                        print_error "Failed to enable system cron for $selected_domain"
+                    fi
+                fi
+            fi
+        fi
+    fi
+
     echo ""
     if [ $enabled -gt 0 ]; then
         print_info "Note: Orphan cron jobs (cron without define) will be automatically cleaned up when you enable/disable this module"
