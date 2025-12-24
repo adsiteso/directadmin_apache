@@ -13,6 +13,11 @@ if [ -z "$CONFIG_DIR" ]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     CONFIG_DIR="${SCRIPT_DIR}/config"
 fi
+# Get logs directory
+if [ -z "$LOGS_DIR" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    LOGS_DIR="${SCRIPT_DIR}/logs"
+fi
 CRON_JOBS_FILE="${CONFIG_DIR}/wp-cron-jobs.txt"
 
 ###############################################################################
@@ -37,7 +42,12 @@ setup_wp_cron_wrapper() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG_DIR="${SCRIPT_DIR}/config"
+LOGS_DIR="${SCRIPT_DIR}/logs"
 CRON_JOBS_FILE="${CONFIG_DIR}/wp-cron-jobs.txt"
+CRON_LOG_FILE="${LOGS_DIR}/wp-cron-execution.log"
+
+# Create logs directory if it doesn't exist
+mkdir -p "$LOGS_DIR" 2>/dev/null || true
 
 # Check if tracking file exists
 if [ ! -f "$CRON_JOBS_FILE" ]; then
@@ -48,39 +58,49 @@ fi
 # Limit concurrent processes to avoid overwhelming the server
 # All sites will be processed, but only MAX_CONCURRENT will run at the same time
 MAX_CONCURRENT=20
+REQUEST_TIMEOUT=10
 PIDS=()
+DOMAIN_PID_MAP=()
 TOTAL_SITES=0
 PROCESSED_SITES=0
+SUCCESSFUL_SITES=0
+FAILED_SITES=0
+TIMEOUT_SITES=0
+START_TIME=$(date +%s)
 
-# First, count total sites to process
-while IFS= read -r line || [ -n "$line" ]; do
-    # Skip empty lines and commented lines (disabled sites)
-    if [[ -z "$line" ]] || [[ "$line" =~ ^[[:space:]]*# ]]; then
-        continue
-    fi
-    IFS=: read -r domain docroot <<< "$line"
-    if [ -z "$domain" ] || [ -z "$docroot" ]; then
-        continue
-    fi
-    if [ -f "$docroot/wp-config.php" ] && grep -q "BEGIN WP-Cron Disable - WordPress Manager" "$docroot/wp-config.php" 2>/dev/null; then
-        ((TOTAL_SITES++))
-    fi
-done < "$CRON_JOBS_FILE"
-
-# Helper function to clean up finished PIDs
+# Helper function to clean up finished PIDs and log results
 cleanup_finished_pids() {
     local NEW_PIDS=()
+    local NEW_DOMAIN_PID_MAP=()
+    local idx=0
+
     for pid in "${PIDS[@]}"; do
         if kill -0 "$pid" 2>/dev/null; then
             NEW_PIDS+=("$pid")
+            NEW_DOMAIN_PID_MAP+=("${DOMAIN_PID_MAP[$idx]}")
         else
+            # Process finished, check exit status
+            local domain_info="${DOMAIN_PID_MAP[$idx]}"
+            local domain=$(echo "$domain_info" | cut -d: -f1)
+            wait "$pid" 2>/dev/null
+            local exit_code=$?
+
+            if [ $exit_code -eq 0 ]; then
+                ((SUCCESSFUL_SITES++))
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] SUCCESS: $domain" >> "$CRON_LOG_FILE" 2>/dev/null || true
+            else
+                ((FAILED_SITES++))
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] FAILED: $domain (exit code: $exit_code)" >> "$CRON_LOG_FILE" 2>/dev/null || true
+            fi
             ((PROCESSED_SITES++))
         fi
+        ((idx++))
     done
     PIDS=("${NEW_PIDS[@]}")
+    DOMAIN_PID_MAP=("${NEW_DOMAIN_PID_MAP[@]}")
 }
 
-# Process all sites
+# Process all sites (read file only once for efficiency)
 while IFS= read -r line || [ -n "$line" ]; do
     # Skip empty lines and commented lines (disabled sites)
     if [[ -z "$line" ]] || [[ "$line" =~ ^[[:space:]]*# ]]; then
@@ -93,6 +113,8 @@ while IFS= read -r line || [ -n "$line" ]; do
 
     # Check if wp-config.php has DISABLE_WP_CRON define
     if [ -f "$docroot/wp-config.php" ] && grep -q "BEGIN WP-Cron Disable - WordPress Manager" "$docroot/wp-config.php" 2>/dev/null; then
+        ((TOTAL_SITES++))
+
         # Wait if we've reached max concurrent jobs
         # This loop ensures we wait for a slot to become available
         while [ ${#PIDS[@]} -ge $MAX_CONCURRENT ]; do
@@ -102,17 +124,35 @@ while IFS= read -r line || [ -n "$line" ]; do
 
         # Run wp-cron.php using wget or curl in background
         if command -v wget &> /dev/null; then
-            /usr/bin/wget -q -O /dev/null "https://${domain}/wp-cron.php?doing_wp_cron" --timeout=10 --tries=1 >/dev/null 2>&1 &
-            PIDS+=($!)
+            /usr/bin/wget -q -O /dev/null "https://${domain}/wp-cron.php?doing_wp_cron" --timeout=$REQUEST_TIMEOUT --tries=1 >/dev/null 2>&1 &
+            pid=$!
+            PIDS+=($pid)
+            DOMAIN_PID_MAP+=("${domain}:${pid}")
         elif command -v curl &> /dev/null; then
-            /usr/bin/curl -s -o /dev/null --max-time 10 "https://${domain}/wp-cron.php?doing_wp_cron" >/dev/null 2>&1 &
-            PIDS+=($!)
+            /usr/bin/curl -s -o /dev/null --max-time $REQUEST_TIMEOUT "https://${domain}/wp-cron.php?doing_wp_cron" >/dev/null 2>&1 &
+            pid=$!
+            PIDS+=($pid)
+            DOMAIN_PID_MAP+=("${domain}:${pid}")
         fi
     fi
 done < "$CRON_JOBS_FILE"
 
+# Calculate dynamic timeout based on number of sites
+# Formula: (total_sites / max_concurrent) * request_timeout * 1.5 (safety margin)
+# Minimum 180 seconds, maximum 600 seconds (10 minutes)
+if [ $TOTAL_SITES -gt 0 ]; then
+    calculated_timeout=$(( (TOTAL_SITES * REQUEST_TIMEOUT * 3) / (MAX_CONCURRENT * 2) ))
+    if [ $calculated_timeout -lt 180 ]; then
+        calculated_timeout=180
+    elif [ $calculated_timeout -gt 600 ]; then
+        calculated_timeout=600
+    fi
+    TIMEOUT=$calculated_timeout
+else
+    TIMEOUT=180
+fi
+
 # Wait for all remaining background jobs to complete (with timeout)
-TIMEOUT=180
 ELAPSED=0
 while [ $ELAPSED -lt $TIMEOUT ] && [ ${#PIDS[@]} -gt 0 ]; do
     sleep 1
@@ -120,12 +160,32 @@ while [ $ELAPSED -lt $TIMEOUT ] && [ ${#PIDS[@]} -gt 0 ]; do
     cleanup_finished_pids
 done
 
-# Final cleanup and wait for any remaining jobs
-cleanup_finished_pids
-for pid in "${PIDS[@]}"; do
-    wait "$pid" 2>/dev/null || true
-    ((PROCESSED_SITES++))
-done
+# Kill any remaining processes that exceeded timeout
+if [ ${#PIDS[@]} -gt 0 ]; then
+    idx=0
+    for pid in "${PIDS[@]}"; do
+        domain_info="${DOMAIN_PID_MAP[$idx]}"
+        domain=$(echo "$domain_info" | cut -d: -f1)
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+        ((TIMEOUT_SITES++))
+        ((PROCESSED_SITES++))
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT: $domain (killed after timeout)" >> "$CRON_LOG_FILE" 2>/dev/null || true
+        ((idx++))
+    done
+    PIDS=()
+    DOMAIN_PID_MAP=()
+fi
+
+# Log summary
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] SUMMARY: Total=$TOTAL_SITES, Success=$SUCCESSFUL_SITES, Failed=$FAILED_SITES, Timeout=$TIMEOUT_SITES, Duration=${DURATION}s" >> "$CRON_LOG_FILE" 2>/dev/null || true
+
+# Keep log file size manageable (keep last 1000 lines)
+if [ -f "$CRON_LOG_FILE" ] && [ $(wc -l < "$CRON_LOG_FILE" 2>/dev/null || echo 0) -gt 1000 ]; then
+    tail -n 1000 "$CRON_LOG_FILE" > "${CRON_LOG_FILE}.tmp" 2>/dev/null && mv "${CRON_LOG_FILE}.tmp" "$CRON_LOG_FILE" 2>/dev/null || true
+fi
 WRAPPER_EOF
     chmod +x "$wrapper_script" 2>/dev/null || true
 
@@ -325,13 +385,13 @@ cleanup_orphan_cron_jobs() {
 
         if [ "$should_remove" = true ]; then
             remove_wp_cron_job "$domain"
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Removed orphan cron job for $domain" >> "${CONFIG_DIR}/wp-cron-cleanup.log" 2>/dev/null || true
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Removed orphan cron job for $domain" >> "${LOGS_DIR}/wp-cron-cleanup.log" 2>/dev/null || true
             ((cleaned++))
         fi
     done
 
     if [ $cleaned -gt 0 ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleaned up $cleaned orphan cron job(s)" >> "${CONFIG_DIR}/wp-cron-cleanup.log" 2>/dev/null || true
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleaned up $cleaned orphan cron job(s)" >> "${LOGS_DIR}/wp-cron-cleanup.log" 2>/dev/null || true
     fi
 
     return 0

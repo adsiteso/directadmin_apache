@@ -17,11 +17,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULES_DIR="$SCRIPT_DIR/modules"
 CONFIG_DIR="$SCRIPT_DIR/config"
 CACHE_DIR="$SCRIPT_DIR/cache"
+LOGS_DIR="$SCRIPT_DIR/logs"
 
 # Create necessary directories
 mkdir -p "$MODULES_DIR"
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$CACHE_DIR"
+mkdir -p "$LOGS_DIR"
 
 # Cache file for WordPress sites
 WP_SITES_CACHE="$CACHE_DIR/wordpress_sites.txt"
