@@ -20,22 +20,22 @@ example-module_description() {
 # Enable module functionality (REQUIRED)
 example-module_enable() {
     print_info "Enabling example-module..."
-    
+
     # Your enable code here
     # Example: modify files, add configurations, etc.
-    
+
     local count=0
     local failed=0
-    
+
     # Example: iterate through WordPress sites
     while IFS=: read -r domain docroot; do
         if [ -z "$domain" ] || [ -z "$docroot" ]; then
             continue
         fi
-        
+
         # Your code here
         # Example: modify .htaccess, wp-config.php, etc.
-        
+
         if [ $? -eq 0 ]; then
             print_success "Updated $domain"
             ((count++))
@@ -43,12 +43,12 @@ example-module_enable() {
             print_error "Failed to update $domain"
             ((failed++))
         fi
-        
+
     done < <(get_wordpress_sites)
-    
+
     echo ""
     print_info "Summary: $count sites updated, $failed failed"
-    
+
     if [ $failed -eq 0 ]; then
         return 0
     else
@@ -59,22 +59,22 @@ example-module_enable() {
 # Disable module functionality (REQUIRED)
 example-module_disable() {
     print_info "Disabling example-module..."
-    
+
     # Your disable code here
     # Example: remove modifications, restore original state
-    
+
     local count=0
     local failed=0
-    
+
     # Example: iterate through WordPress sites
     while IFS=: read -r domain docroot; do
         if [ -z "$domain" ] || [ -z "$docroot" ]; then
             continue
         fi
-        
+
         # Your code here
         # Example: remove rules from .htaccess, etc.
-        
+
         if [ $? -eq 0 ]; then
             print_success "Reverted $domain"
             ((count++))
@@ -82,12 +82,12 @@ example-module_disable() {
             print_error "Failed to revert $domain"
             ((failed++))
         fi
-        
+
     done < <(get_wordpress_sites)
-    
+
     echo ""
     print_info "Summary: $count sites updated, $failed failed"
-    
+
     if [ $failed -eq 0 ]; then
         return 0
     else
@@ -99,33 +99,33 @@ example-module_disable() {
 example-module_status() {
     print_info "Checking example-module status..."
     echo ""
-    
+
     local total=0
     local enabled=0
     local disabled=0
-    
+
     # Example: check status for each site
     while IFS=: read -r domain docroot; do
         if [ -z "$domain" ] || [ -z "$docroot" ]; then
             continue
         fi
-        
+
         ((total++))
-        
+
         # Your status check code here
         # Example: check if rule exists in .htaccess
         local status_file="$docroot/.example-status"
-        
+
         if [ -f "$status_file" ]; then
-            echo -e "  ${GREEN}âœ“${NC} $domain - Enabled"
+            echo -e "  ${GREEN}✓${NC} $domain - Enabled"
             ((enabled++))
         else
-            echo -e "  ${RED}âœ—${NC} $domain - Disabled"
+            echo -e "  ${RED}✗${NC} $domain - Disabled"
             ((disabled++))
         fi
-        
+
     done < <(get_wordpress_sites)
-    
+
     echo ""
     echo "Summary:"
     echo "  Total WordPress sites: $total"

@@ -30,21 +30,21 @@ xmlrpc-block_description() {
 # Enable XML-RPC blocking
 xmlrpc-block_enable() {
     print_info "Enabling XML-RPC blocking for all WordPress sites..."
-    
+
     # Check if get_wordpress_sites function exists
     if ! type get_wordpress_sites &>/dev/null; then
         print_error "get_wordpress_sites function not available"
         return 1
     fi
-    
+
     local count=0
     local failed=0
-    
+
     # Get all WordPress sites into array
     local sites_output
     sites_output=$(get_wordpress_sites 2>&1)
     local sites=()
-    
+
     if [ -n "$sites_output" ]; then
         while IFS= read -r site; do
             if [ -n "$site" ]; then
@@ -52,36 +52,36 @@ xmlrpc-block_enable() {
             fi
         done <<< "$sites_output"
     fi
-    
+
     if [ ${#sites[@]} -eq 0 ]; then
         print_warning "No WordPress sites found"
         return 0
     fi
-    
+
     print_info "Found ${#sites[@]} WordPress site(s) to process"
-    
+
     # Process each site
     for site in "${sites[@]}"; do
         IFS=: read -r domain docroot <<< "$site"
-        
+
         if [ -z "$domain" ] || [ -z "$docroot" ]; then
             continue
         fi
-        
+
         local htaccess_file="$docroot/.htaccess"
-        
+
         # Create .htaccess if it doesn't exist
         if [ ! -f "$htaccess_file" ]; then
             touch "$htaccess_file"
             chown webapps:webapps "$htaccess_file" 2>/dev/null || true
         fi
-        
+
         # Check if rule already exists
         if grep -q "# BEGIN XML-RPC Block - WordPress Manager" "$htaccess_file" 2>/dev/null; then
             print_warning "XML-RPC block already exists for $domain"
             continue
         fi
-        
+
         # Add blocking rules
         {
             echo ""
@@ -94,7 +94,7 @@ xmlrpc-block_enable() {
             echo ""
             echo "# END XML-RPC Block - WordPress Manager"
         } >> "$htaccess_file"
-        
+
         if [ $? -eq 0 ]; then
             print_success "Blocked XML-RPC for $domain"
             ((count++))
@@ -102,12 +102,12 @@ xmlrpc-block_enable() {
             print_error "Failed to block XML-RPC for $domain"
             ((failed++))
         fi
-        
+
     done
-    
+
     echo ""
     print_info "Summary: $count sites updated, $failed failed"
-    
+
     if [ $failed -eq 0 ]; then
         return 0
     else
@@ -118,21 +118,21 @@ xmlrpc-block_enable() {
 # Disable XML-RPC blocking
 xmlrpc-block_disable() {
     print_info "Disabling XML-RPC blocking for all WordPress sites..."
-    
+
     # Check if get_wordpress_sites function exists
     if ! type get_wordpress_sites &>/dev/null; then
         print_error "get_wordpress_sites function not available"
         return 1
     fi
-    
+
     local count=0
     local failed=0
-    
+
     # Get all WordPress sites into array
     local sites_output
     sites_output=$(get_wordpress_sites 2>&1)
     local sites=()
-    
+
     if [ -n "$sites_output" ]; then
         while IFS= read -r site; do
             if [ -n "$site" ]; then
@@ -140,46 +140,46 @@ xmlrpc-block_disable() {
             fi
         done <<< "$sites_output"
     fi
-    
+
     if [ ${#sites[@]} -eq 0 ]; then
         print_warning "No WordPress sites found"
         return 0
     fi
-    
+
     print_info "Found ${#sites[@]} WordPress site(s) to process"
-    
+
     local skipped_no_htaccess=0
     local skipped_no_rule=0
     local skipped_invalid=0
-    
+
     # Process each site
     for site in "${sites[@]}"; do
         IFS=: read -r domain docroot <<< "$site"
-        
+
         if [ -z "$domain" ] || [ -z "$docroot" ]; then
             ((skipped_invalid++))
             continue
         fi
-        
+
         local htaccess_file="$docroot/.htaccess"
-        
+
         if [ ! -f "$htaccess_file" ]; then
             ((skipped_no_htaccess++))
             continue
         fi
-        
+
         # Check if rule exists
         if ! grep -q "# BEGIN XML-RPC Block - WordPress Manager" "$htaccess_file" 2>/dev/null; then
             ((skipped_no_rule++))
             continue
         fi
-        
+
         # Remove blocking rules using sed
         # Remove from "# BEGIN XML-RPC Block" to "# END XML-RPC Block" including blank lines
         sed -i '/^# BEGIN XML-RPC Block - WordPress Manager/,/^# END XML-RPC Block - WordPress Manager$/d' "$htaccess_file" 2>/dev/null
         # Remove multiple consecutive blank lines
         sed -i '/^$/N;/^\n$/d' "$htaccess_file" 2>/dev/null
-        
+
         if [ $? -eq 0 ]; then
             print_success "Unblocked XML-RPC for $domain"
             ((count++))
@@ -187,9 +187,9 @@ xmlrpc-block_disable() {
             print_error "Failed to unblock XML-RPC for $domain"
             ((failed++))
         fi
-        
+
     done
-    
+
     # Show skipped reasons if any
     if [ $skipped_no_htaccess -gt 0 ] || [ $skipped_no_rule -gt 0 ] || [ $skipped_invalid -gt 0 ]; then
         echo ""
@@ -203,10 +203,10 @@ xmlrpc-block_disable() {
             print_info "Skipped $skipped_invalid site(s) - invalid domain/docroot"
         fi
     fi
-    
+
     echo ""
     print_info "Summary: $count sites updated, $failed failed"
-    
+
     if [ $failed -eq 0 ]; then
         return 0
     else
@@ -218,22 +218,22 @@ xmlrpc-block_disable() {
 xmlrpc-block_status() {
     print_info "Checking XML-RPC block status for all WordPress sites..."
     echo ""
-    
+
     # Check if get_wordpress_sites function exists
     if ! type get_wordpress_sites &>/dev/null; then
         print_error "get_wordpress_sites function not available"
         return 1
     fi
-    
+
     local total=0
     local blocked=0
     local unblocked=0
-    
+
     # Get all WordPress sites into array
     local sites_output
     sites_output=$(get_wordpress_sites 2>&1)
     local sites=()
-    
+
     if [ -n "$sites_output" ]; then
         while IFS= read -r site; do
             if [ -n "$site" ]; then
@@ -241,7 +241,7 @@ xmlrpc-block_status() {
             fi
         done <<< "$sites_output"
     fi
-    
+
     if [ ${#sites[@]} -eq 0 ]; then
         print_warning "No WordPress sites found"
         echo ""
@@ -251,31 +251,31 @@ xmlrpc-block_status() {
         echo -e "  ${RED}Not blocked: 0${NC}"
         return 0
     fi
-    
+
     print_info "Found ${#sites[@]} WordPress site(s)"
     echo ""
-    
+
     # Process each site
     for site in "${sites[@]}"; do
         IFS=: read -r domain docroot <<< "$site"
-        
+
         if [ -z "$domain" ] || [ -z "$docroot" ]; then
             continue
         fi
-        
+
         local htaccess_file="$docroot/.htaccess"
         ((total++))
-        
+
         if [ -f "$htaccess_file" ] && grep -q "# BEGIN XML-RPC Block - WordPress Manager" "$htaccess_file" 2>/dev/null; then
-            echo -e "  ${GREEN}âœ“${NC} $domain - Blocked"
+            echo -e "  ${GREEN}✓${NC} $domain - Blocked"
             ((blocked++))
         else
-            echo -e "  ${RED}âœ—${NC} $domain - Not blocked"
+            echo -e "  ${RED}✗${NC} $domain - Not blocked"
             ((unblocked++))
         fi
-        
+
     done
-    
+
     echo ""
     echo "Summary:"
     echo "  Total WordPress sites: $total"
