@@ -64,10 +64,10 @@ check_root() {
 scan_wordpress_sites() {
     local force_rescan="${1:-false}"
 
-    # Check if cache exists and is valid (not older than 24 hours by default)
+    # Check if cache exists and is valid (not older than 7 days by default)
     if [ "$force_rescan" != "true" ] && [ -f "$WP_SITES_CACHE" ] && [ -f "$WP_SITES_CACHE_TIMESTAMP" ]; then
         local cache_age=$(($(date +%s) - $(cat "$WP_SITES_CACHE_TIMESTAMP")))
-        local max_age=86400  # 24 hours in seconds
+        local max_age=604800  # 7 days in seconds
 
         if [ $cache_age -lt $max_age ]; then
             print_info "Using cached WordPress sites list (age: $(($cache_age / 3600))h)"
