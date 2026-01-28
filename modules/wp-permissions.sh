@@ -25,17 +25,58 @@ wp-permissions_has_status() {
 get_wp_owner() {
     local docroot="$1"
 
-    # Try to get owner from wp-config.php or parent directory
-    if [ -f "$docroot/wp-config.php" ]; then
-        local owner=$(stat -c '%U:%G' "$docroot/wp-config.php" 2>/dev/null || stat -f '%Su:%Sg' "$docroot/wp-config.php" 2>/dev/null)
-        echo "$owner"
-    elif [ -d "$docroot" ]; then
-        local owner=$(stat -c '%U:%G' "$docroot" 2>/dev/null || stat -f '%Su:%Sg' "$docroot" 2>/dev/null)
-        echo "$owner"
-    else
-        # Default to webapps:webapps (common in DirectAdmin)
-        echo "webapps:webapps"
+    # Prefer docroot owner/group to avoid inheriting wrong wp-config.php owner (can cause Forbidden)
+    # Fallback to walking up directories if docroot is owned by root.
+    if [ -d "$docroot" ]; then
+        # DirectAdmin: infer owner from path /home/USERNAME/domains/.../public_html (avoids trusting wrong webapps owner)
+        if [[ "$docroot" =~ ^/home/([^/]+)/domains/[^/]+/public_html ]]; then
+            local da_user="${BASH_REMATCH[1]}"
+            if [ -n "$da_user" ] && id "$da_user" &>/dev/null; then
+                echo "${da_user}:${da_user}"
+                return 0
+            fi
+        fi
+
+        local owner_group=""
+        owner_group=$(stat -c '%U:%G' "$docroot" 2>/dev/null || stat -f '%Su:%Sg' "$docroot" 2>/dev/null)
+
+        local owner="${owner_group%%:*}"
+        local group="${owner_group#*:}"
+
+        # If docroot is owned by webapps (wrong state), try path to get real DA user
+        if [ "$owner" = "webapps" ] && [[ "$docroot" =~ /home/([^/]+)/ ]]; then
+            local da_user="${BASH_REMATCH[1]}"
+            if [ -n "$da_user" ] && [ "$da_user" != "webapps" ] && id "$da_user" &>/dev/null; then
+                echo "${da_user}:${da_user}"
+                return 0
+            fi
+        fi
+
+        # If docroot is root-owned, try parent dirs to find a non-root owner
+        if [ "$owner" = "root" ]; then
+            local parent="$docroot"
+            local i=0
+            while [ $i -lt 5 ]; do
+                parent="$(dirname "$parent")"
+                if [ -z "$parent" ] || [ "$parent" = "/" ]; then
+                    break
+                fi
+                owner_group=$(stat -c '%U:%G' "$parent" 2>/dev/null || stat -f '%Su:%Sg' "$parent" 2>/dev/null)
+                owner="${owner_group%%:*}"
+                group="${owner_group#*:}"
+                if [ -n "$owner" ] && [ "$owner" != "root" ] && [ "$owner" != "webapps" ]; then
+                    echo "$owner:$group"
+                    return 0
+                fi
+                i=$((i + 1))
+            done
+        fi
+
+        echo "$owner:$group"
+        return 0
     fi
+
+    echo "root:root"
 }
 
 # Set permissions for WordPress site
@@ -53,76 +94,106 @@ set_wp_permissions() {
     local group=$(echo "$owner_group" | cut -d: -f2)
 
     local errors=0
+    local step_failed=0
 
     echo -n "  - Setting directory permissions (755)... "
-    find "$docroot" -type d -print0 | xargs -0 chmod 755 2>/dev/null || ((errors++))
-    if [ $errors -eq 0 ]; then
+    step_failed=0
+    find "$docroot" -type d -print0 | xargs -0 chmod 755 2>/dev/null || step_failed=1
+    if [ $step_failed -eq 0 ]; then
         echo "Done"
     else
         echo "Failed"
+        ((errors++))
     fi
 
     echo -n "  - Setting file permissions (644)... "
-    find "$docroot" -type f -print0 | xargs -0 chmod 644 2>/dev/null || ((errors++))
-    if [ $errors -eq 0 ]; then
+    step_failed=0
+    find "$docroot" -type f -print0 | xargs -0 chmod 644 2>/dev/null || step_failed=1
+    if [ $step_failed -eq 0 ]; then
         echo "Done"
     else
         echo "Failed"
+        ((errors++))
     fi
 
     # Set wp-config.php to 600 (more secure)
     if [ -f "$docroot/wp-config.php" ]; then
         echo -n "  - Setting wp-config.php permissions (600)... "
-        chmod 600 "$docroot/wp-config.php" 2>/dev/null || ((errors++))
-        if [ $errors -eq 0 ]; then
+        step_failed=0
+        chmod 600 "$docroot/wp-config.php" 2>/dev/null || step_failed=1
+        if [ $step_failed -eq 0 ]; then
             echo "Done"
         else
+            # Fallback to 640 to reduce risk of Forbidden on setups where PHP/Apache needs group-read.
+            chmod 640 "$docroot/wp-config.php" 2>/dev/null || true
             echo "Failed"
+            ((errors++))
         fi
     fi
 
     # Set .htaccess to 644
     if [ -f "$docroot/.htaccess" ]; then
         echo -n "  - Setting .htaccess permissions (644)... "
-        chmod 644 "$docroot/.htaccess" 2>/dev/null || ((errors++))
-        if [ $errors -eq 0 ]; then
+        step_failed=0
+        chmod 644 "$docroot/.htaccess" 2>/dev/null || step_failed=1
+        if [ $step_failed -eq 0 ]; then
             echo "Done"
         else
             echo "Failed"
+            ((errors++))
         fi
     fi
 
     # Set wp-content/uploads to 755 (and ensure directories are writable)
     if [ -d "$docroot/wp-content/uploads" ]; then
         echo -n "  - Setting wp-content/uploads permissions... "
-        find "$docroot/wp-content/uploads" -type d -print0 | xargs -0 chmod 755 2>/dev/null || ((errors++))
-        find "$docroot/wp-content/uploads" -type f -print0 | xargs -0 chmod 644 2>/dev/null || ((errors++))
-        if [ $errors -eq 0 ]; then
+        step_failed=0
+        find "$docroot/wp-content/uploads" -type d -print0 | xargs -0 chmod 755 2>/dev/null || step_failed=1
+        find "$docroot/wp-content/uploads" -type f -print0 | xargs -0 chmod 644 2>/dev/null || step_failed=1
+        if [ $step_failed -eq 0 ]; then
             echo "Done"
         else
             echo "Failed"
+            ((errors++))
         fi
     fi
 
-    # Set wp-content/upgrade to 755
-    if [ -d "$docroot/wp-content/upgrade" ]; then
-        echo -n "  - Setting wp-content/upgrade permissions... "
-        find "$docroot/wp-content/upgrade" -type d -print0 | xargs -0 chmod 755 2>/dev/null || ((errors++))
-        find "$docroot/wp-content/upgrade" -type f -print0 | xargs -0 chmod 644 2>/dev/null || ((errors++))
-        if [ $errors -eq 0 ]; then
-            echo "Done"
+    # Ensure wp-content/upgrade exists and is readable/writable for updates
+    echo -n "  - Setting wp-content/upgrade permissions... "
+    step_failed=0
+    if [ -d "$docroot/wp-content" ]; then
+        mkdir -p "$docroot/wp-content/upgrade" 2>/dev/null || step_failed=1
+        if [ -d "$docroot/wp-content/upgrade" ]; then
+            chmod 755 "$docroot/wp-content/upgrade" 2>/dev/null || step_failed=1
+            find "$docroot/wp-content/upgrade" -type d -print0 | xargs -0 chmod 755 2>/dev/null || true
+            find "$docroot/wp-content/upgrade" -type f -print0 | xargs -0 chmod 644 2>/dev/null || true
         else
-            echo "Failed"
+            step_failed=1
         fi
+    else
+        step_failed=1
+    fi
+    if [ $step_failed -eq 0 ]; then
+        echo "Done"
+    else
+        echo "Failed"
+        ((errors++))
     fi
 
     # Set ownership recursively
     echo -n "  - Setting ownership ($owner:$group)... "
-    chown -R "$owner:$group" "$docroot" 2>/dev/null || ((errors++))
-    if [ $errors -eq 0 ]; then
+    step_failed=0
+    # Safety: do not chown to root or webapps (causes Forbidden on DirectAdmin)
+    if [ -z "$owner" ] || [ -z "$group" ] || [ "$owner" = "root" ] || [ "$group" = "root" ] || [ "$owner" = "webapps" ] || [ "$group" = "webapps" ]; then
+        step_failed=1
+    else
+        chown -R "$owner:$group" "$docroot" 2>/dev/null || step_failed=1
+    fi
+    if [ $step_failed -eq 0 ]; then
         echo "Done"
     else
         echo "Failed"
+        ((errors++))
     fi
 
     # Special handling for wp-content/uploads - ensure web server can write
