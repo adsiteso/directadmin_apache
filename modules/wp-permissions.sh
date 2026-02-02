@@ -674,7 +674,8 @@ wp-permissions_status() {
             ;;
         2)
             # Specific site
-            local selected=$(select_website)
+            local selected=""
+            select_website selected
             if [ -z "$selected" ]; then
                 print_info "Operation cancelled"
                 return 0
